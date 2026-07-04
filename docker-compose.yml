@@ -1,0 +1,13 @@
+services:
+  dropagent:
+    build: .
+    image: dropagent:latest
+    env_file:
+      - .env
+    volumes:
+      - ./output:/app/output
+      - ./assets:/app/assets
+      - ./logs:/app/logs
+      - ./.secrets:/app/.secrets
+    # Example: override with your own topic/genre at `docker compose run`.
+    command: ["generate", "--topic", "a lighthouse keeper who finds a message in a bottle", "--genre", "mystery"]
