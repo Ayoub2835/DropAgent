@@ -43,7 +43,24 @@ posterior.
    configurado, o si falla la creación en vivo, funciona en modo
    "dry-run" simulando el lanzamiento.
 
-6. **Notificaciones en consola + log.json** (`dropagent/notifier.py`)
+6. **Generador de vídeos publicitarios con Higgsfield** (`dropagent/video_generator.py`)
+   Cuando un producto queda aprobado (creado en Shopify), llama a la API
+   de Higgsfield para generar automáticamente un vídeo publicitario corto
+   a partir de la imagen y descripción del producto, y lo descarga a
+   `generated_videos/`. Si Higgsfield no está configurado, o si la
+   llamada falla, funciona en modo "dry-run" sin gastar créditos.
+
+7. **Generador de landing pages** (`dropagent/landing_page_generator.py`)
+   Por cada producto aprobado, genera una landing page HTML autocontenida
+   (sin dependencias externas) optimizada para conversión: hero con
+   imagen del producto, descripción persuasiva, precio con descuento
+   simulado y cuenta regresiva, botón de compra hacia Shopify, beneficios,
+   testimonios generados por IA, garantía y urgencia. Se guarda en
+   `landing_pages/<slug>.html`. No depende de ninguna API de pago (los
+   testimonios usan Claude si está configurado, con plantilla local de
+   respaldo), así que siempre se genera sin costo.
+
+8. **Notificaciones en consola + log.json** (`dropagent/notifier.py`)
    Todos los eventos del sistema se imprimen en consola con íconos y
    timestamp, y se guardan de forma persistente en `log.json`.
 
@@ -103,10 +120,26 @@ ejecución.
 | `TIKTOK_MONITOR_INTERVAL_HOURS` | Cada cuántas horas se revisa el ROAS (default 24) |
 | `TIKTOK_MIN_ROAS` / `TIKTOK_MAX_SPEND_NO_SALES` | Umbrales para marcar campañas de bajo rendimiento |
 | `TIKTOK_PURCHASE_METRIC` / `TIKTOK_REVENUE_METRIC` | Nombres de las métricas de compras/ingresos del reporte (ajustables según tu cuenta) |
+| `HIGGSFIELD_API_KEY` | API key de tu cuenta de Higgsfield |
+| `HIGGSFIELD_API_BASE_URL` | URL base de la API de Higgsfield |
+| `HIGGSFIELD_MODEL` | Modelo de generación de vídeo a usar |
+| `HIGGSFIELD_ASPECT_RATIO` | Formato del vídeo (`9:16`, `16:9`, `1:1`) |
+| `HIGGSFIELD_VIDEO_DURATION_SECONDS` | Duración objetivo del vídeo generado |
+| `HIGGSFIELD_POLL_INTERVAL_SECONDS` / `HIGGSFIELD_POLL_TIMEOUT_SECONDS` | Frecuencia y tiempo máximo de espera al consultar el estado del job |
+| `HIGGSFIELD_VIDEO_OUTPUT_DIR` | Carpeta donde se guardan los vídeos generados (default `generated_videos`) |
+| `LANDING_PAGES_OUTPUT_DIR` | Carpeta donde se guardan las landing pages generadas (default `landing_pages`) |
+| `LANDING_PAGE_DISCOUNT_PERCENT` | Porcentaje de descuento simulado mostrado en la landing page |
+| `LANDING_PAGE_MAX_STOCK` | Stock máximo simulado para el mensaje de urgencia |
 | `MAX_PRODUCTS_PER_RUN` | Máximo de productos a crear por ejecución |
 | `LOG_FILE` | Ruta del archivo JSON donde se guarda el historial (default `log.json`) |
 
 Consulta `.env.example` para la lista completa y valores por defecto.
+
+> `HIGGSFIELD_API_KEY` se obtiene desde tu cuenta en
+> [platform.higgsfield.ai](https://platform.higgsfield.ai) → sección de API
+> keys. Los nombres de endpoint (`HIGGSFIELD_GENERATE_ENDPOINT`,
+> `HIGGSFIELD_STATUS_ENDPOINT`) son configurables por si la documentación
+> oficial usa rutas distintas a las que trae por defecto este proyecto.
 
 ## Uso
 
@@ -122,12 +155,20 @@ python main.py trending --keyword "gadgets" --limit 10
 ### Crear productos automáticamente en Shopify
 
 Busca productos trending, genera su descripción con Claude, los publica
-en tu tienda y lanza una campaña de TikTok Ads para cada uno:
+en tu tienda, lanza una campaña de TikTok Ads, genera un vídeo
+publicitario con Higgsfield y crea la landing page de cada producto
+aprobado:
 
 ```bash
 python main.py create-products
 python main.py create-products --max 3 --json
 ```
+
+Cada producto aprobado (creado en Shopify) genera además:
+- Un vídeo publicitario en `generated_videos/` (vía Higgsfield, o un
+  registro "dry-run" si no está configurado).
+- Una landing page en `landing_pages/<slug>.html`, lista para abrir en
+  el navegador o subir a cualquier hosting estático.
 
 ### Revisar Facebook Ads
 
@@ -176,16 +217,21 @@ DropAgent/
 ├── requirements.txt
 ├── .env.example
 ├── log.json                      # Se genera automáticamente al ejecutar
+├── generated_videos/              # Vídeos publicitarios generados (Higgsfield)
+├── landing_pages/                 # Landing pages HTML generadas por producto
 └── dropagent/
     ├── __init__.py
     ├── config.py                 # Carga y validación de variables de entorno
     ├── notifier.py                # Notificaciones: consola + log.json
     ├── scheduler.py                # Bucle compartido para tareas programadas
+    ├── utils.py                    # Utilidades compartidas (slugify)
     ├── aliexpress_scraper.py      # Buscador de productos trending
-    ├── claude_generator.py        # Generador de descripciones con Claude
+    ├── claude_generator.py        # Generador de descripciones y testimonios con Claude
     ├── shopify_manager.py         # Creador de productos en Shopify
     ├── facebook_ads_monitor.py    # Monitor de Facebook Ads cada 24h
     ├── tiktok_ads_manager.py       # Lanzador y monitor de TikTok Ads cada 24h
+    ├── video_generator.py          # Generador de vídeos publicitarios (Higgsfield)
+    ├── landing_page_generator.py   # Generador de landing pages HTML
     └── pipeline.py                # Orquesta el flujo completo
 ```
 
@@ -201,6 +247,11 @@ ninguna clave configurada, para que puedas probar el flujo completo:
 - **Facebook Ads**: omite la revisión y lo indica claramente en consola.
 - **TikTok Ads**: simula el lanzamiento de campaña (modo "dry-run") y omite
   la revisión de ROAS si no está configurado.
+- **Higgsfield**: omite la generación de vídeo y registra un resultado
+  "dry-run" si no está configurado, sin consumir créditos.
+- **Landing pages**: se generan siempre (no dependen de ninguna API de
+  pago); los testimonios usan una plantilla local si Claude no está
+  configurado.
 
 Esto te permite ejecutar `python main.py create-products` inmediatamente
 después de clonar el repo, sin configurar nada, y ver el flujo completo

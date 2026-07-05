@@ -7,19 +7,24 @@ from typing import Any, Dict, List
 from .aliexpress_scraper import AliExpressScraper
 from .claude_generator import ClaudeDescriptionGenerator
 from .config import config
+from .landing_page_generator import LandingPageGenerator
 from .notifier import notifier
 from .shopify_manager import ShopifyManager
 from .tiktok_ads_manager import TikTokAdsManager
+from .video_generator import HiggsfieldVideoGenerator
 
 
 class DropAgentPipeline:
-    """Pipeline principal de DropAgent: producto trending -> tienda Shopify -> anuncio TikTok."""
+    """Pipeline principal de DropAgent: producto trending -> Shopify -> anuncio
+    TikTok -> vídeo publicitario (Higgsfield) -> landing page."""
 
     def __init__(self):
         self.scraper = AliExpressScraper()
         self.generator = ClaudeDescriptionGenerator()
         self.shopify = ShopifyManager()
         self.tiktok = TikTokAdsManager()
+        self.video_generator = HiggsfieldVideoGenerator()
+        self.landing_pages = LandingPageGenerator()
 
     def run_once(self, max_products: int = None) -> List[Dict[str, Any]]:
         """Ejecuta una pasada completa del pipeline y devuelve un resumen."""
@@ -40,14 +45,27 @@ class DropAgentPipeline:
         for product in products:
             copy = self.generator.generate(product)
             shopify_result = self.shopify.create_product(product, copy)
-            landing_url = self._resolve_landing_url(product, shopify_result)
-            tiktok_result = self.tiktok.launch_campaign(product, copy, landing_url)
+            product_url = self._resolve_shopify_product_url(product, shopify_result)
+            tiktok_result = self.tiktok.launch_campaign(product, copy, product_url)
+
+            video_result = None
+            landing_page_result = None
+            if shopify_result.success:
+                # El producto quedó "aprobado" (creado en Shopify, real o
+                # simulado): genera su vídeo publicitario y su landing page.
+                video_result = self.video_generator.generate_ad_video(product, copy)
+                landing_page_result = self.landing_pages.generate(
+                    product, copy, shopify_result, product_url
+                )
+
             results.append(
                 {
                     "product": product.to_dict(),
                     "copy": copy.to_dict(),
                     "shopify": shopify_result.to_dict(),
                     "tiktok": tiktok_result.to_dict(),
+                    "video": video_result.to_dict() if video_result else None,
+                    "landing_page": landing_page_result.to_dict() if landing_page_result else None,
                 }
             )
 
@@ -59,9 +77,10 @@ class DropAgentPipeline:
         return results
 
     @staticmethod
-    def _resolve_landing_url(product, shopify_result) -> str:
-        """Construye la URL de la ficha de producto en Shopify para usarla como
-        landing page del anuncio de TikTok. Si Shopify no está configurado o
+    def _resolve_shopify_product_url(product, shopify_result) -> str:
+        """Construye la URL de la ficha de producto en Shopify, usada como
+        landing page del anuncio de TikTok y como destino del botón de
+        compra de la landing page generada. Si Shopify no está configurado o
         la respuesta no trae el handle, usa la URL de AliExpress como respaldo."""
         handle = None
         if shopify_result.raw_response:

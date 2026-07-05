@@ -35,3 +35,5 @@ models_cache/
 
 # Dropshipping automation subproject (dropshipping/)
 dropshipping/log.json
+dropshipping/generated_videos/
+dropshipping/landing_pages/
