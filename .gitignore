@@ -32,3 +32,6 @@ logs/
 *.pt
 *.bin
 models_cache/
+
+# Dropshipping automation subproject (dropshipping/)
+dropshipping/log.json
