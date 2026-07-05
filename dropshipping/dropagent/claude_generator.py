@@ -8,7 +8,7 @@ generador de plantillas local para que el pipeline nunca se detenga.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from .aliexpress_scraper import Product
 from .config import config
@@ -37,6 +37,26 @@ beneficios, lista para pegar en Shopify",
   "tags": ["tag1", "tag2", "tag3"]
 }}
 """
+
+TESTIMONIAL_PROMPT_TEMPLATE = """Eres un copywriter experto en e-commerce.
+Genera {count} testimonios de clientes ficticios pero creíbles y persuasivos,
+en español, para vender este producto de dropshipping:
+
+Producto: {title}
+
+Responde ÚNICAMENTE con un JSON válido (sin texto adicional, sin markdown),
+una lista con esta forma exacta:
+[
+  {{"name": "Nombre Apellido", "text": "testimonio breve y creíble (máx 160 caracteres)", "rating": 5}}
+]
+"""
+
+_TEMPLATE_TESTIMONIALS = [
+    {"name": "Laura M.", "text": "Llegó rápido y superó mis expectativas, ¡lo recomiendo totalmente!", "rating": 5},
+    {"name": "Carlos R.", "text": "Excelente calidad por el precio, ya pedí otro para regalar.", "rating": 5},
+    {"name": "Ana P.", "text": "Justo lo que buscaba, muy fácil de usar y se ve genial.", "rating": 4},
+    {"name": "Miguel S.", "text": "Buena relación calidad-precio, el envío fue más rápido de lo esperado.", "rating": 5},
+]
 
 
 @dataclass
@@ -143,6 +163,43 @@ class ClaudeDescriptionGenerator:
             tags=tags,
             source="template",
         )
+
+
+    def generate_testimonials(self, product: Product, count: int = 3) -> List[Dict[str, Any]]:
+        """Genera testimonios de clientes ficticios para una landing page."""
+        if self.is_live:
+            try:
+                return self._generate_testimonials_with_claude(product, count)
+            except Exception as exc:  # noqa: BLE001 - degradar sin romper el pipeline
+                notifier.warning(
+                    "claude_generate",
+                    f"Fallo al generar testimonios con Claude ({exc}); usando plantilla local",
+                )
+        return self._generate_testimonials_template(count)
+
+    def _generate_testimonials_with_claude(self, product: Product, count: int) -> List[Dict[str, Any]]:
+        import json
+
+        prompt = TESTIMONIAL_PROMPT_TEMPLATE.format(count=count, title=product.title)
+        response = self._client.messages.create(
+            model=config.claude_model,
+            max_tokens=512,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw_text = "".join(
+            block.text for block in response.content if getattr(block, "type", "") == "text"
+        ).strip()
+
+        cleaned = raw_text.strip("`")
+        if cleaned.lower().startswith("json"):
+            cleaned = cleaned[4:].strip()
+
+        data = json.loads(cleaned)
+        return list(data)[:count]
+
+    @staticmethod
+    def _generate_testimonials_template(count: int) -> List[Dict[str, Any]]:
+        return _TEMPLATE_TESTIMONIALS[:count]
 
 
 def get_generator() -> ClaudeDescriptionGenerator:

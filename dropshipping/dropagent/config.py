@@ -120,6 +120,45 @@ class Config:
         default_factory=lambda: os.getenv("TIKTOK_REVENUE_METRIC", "total_purchase_value")
     )
 
+    # Higgsfield (generación de vídeo publicitario)
+    higgsfield_api_key: str = field(default_factory=lambda: os.getenv("HIGGSFIELD_API_KEY", ""))
+    higgsfield_api_base_url: str = field(
+        default_factory=lambda: os.getenv("HIGGSFIELD_API_BASE_URL", "https://platform.higgsfield.ai/v1")
+    )
+    # Rutas del endpoint configurables por si la API real difiere de estos
+    # valores por defecto (documentación sujeta a cambios).
+    higgsfield_generate_endpoint: str = field(
+        default_factory=lambda: os.getenv("HIGGSFIELD_GENERATE_ENDPOINT", "image2video")
+    )
+    higgsfield_status_endpoint: str = field(
+        default_factory=lambda: os.getenv("HIGGSFIELD_STATUS_ENDPOINT", "jobs")
+    )
+    higgsfield_model: str = field(default_factory=lambda: os.getenv("HIGGSFIELD_MODEL", "higgsfield-dit"))
+    higgsfield_aspect_ratio: str = field(default_factory=lambda: os.getenv("HIGGSFIELD_ASPECT_RATIO", "9:16"))
+    higgsfield_video_duration_seconds: int = field(
+        default_factory=lambda: _env_int("HIGGSFIELD_VIDEO_DURATION_SECONDS", 15)
+    )
+    higgsfield_poll_interval_seconds: float = field(
+        default_factory=lambda: _env_float("HIGGSFIELD_POLL_INTERVAL_SECONDS", 5.0)
+    )
+    higgsfield_poll_timeout_seconds: float = field(
+        default_factory=lambda: _env_float("HIGGSFIELD_POLL_TIMEOUT_SECONDS", 180.0)
+    )
+    higgsfield_video_output_dir: str = field(
+        default_factory=lambda: os.getenv("HIGGSFIELD_VIDEO_OUTPUT_DIR", "generated_videos")
+    )
+
+    # Landing pages
+    landing_pages_output_dir: str = field(
+        default_factory=lambda: os.getenv("LANDING_PAGES_OUTPUT_DIR", "landing_pages")
+    )
+    landing_page_discount_percent: float = field(
+        default_factory=lambda: _env_float("LANDING_PAGE_DISCOUNT_PERCENT", 30.0)
+    )
+    landing_page_max_stock: int = field(
+        default_factory=lambda: _env_int("LANDING_PAGE_MAX_STOCK", 15)
+    )
+
     # General
     max_products_per_run: int = field(default_factory=lambda: _env_int("MAX_PRODUCTS_PER_RUN", 5))
     log_file: str = field(default_factory=lambda: os.getenv("LOG_FILE", "log.json"))
@@ -143,6 +182,10 @@ class Config:
     @property
     def tiktok_configured(self) -> bool:
         return bool(self.tiktok_access_token and self.tiktok_advertiser_id)
+
+    @property
+    def higgsfield_configured(self) -> bool:
+        return bool(self.higgsfield_api_key)
 
 
 config = Config()
